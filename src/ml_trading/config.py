@@ -43,6 +43,17 @@ class FeatureConfig:
     beta_window: int = 126
     """Window for the rolling beta of each symbol to the equal-weight market."""
 
+    anomaly_signals: bool = False
+    """Add the signal families the cross-sectional literature keeps finding: 52-week-high
+    proximity, residual momentum, MAX/idiosyncratic-skew lottery proxies, Amihud
+    illiquidity and size, overnight-vs-intraday decomposition, annual seasonality,
+    volatility-regime and trend (MACD) features. Gu/Kelly/Xiu report that the predictors
+    that survive across ML methods are variations on momentum, liquidity and volatility,
+    which is exactly what these add."""
+
+    seasonality_years: int = 5
+    """How many prior years of same-calendar-time returns the seasonality signal averages."""
+
 
 @dataclass(frozen=True)
 class LabelConfig:
@@ -62,6 +73,16 @@ class LabelConfig:
     winsorize: float = 0.01
     """For ``continuous`` labels, clip each day's target at this quantile from both tails."""
 
+    sample_weight: str = "none"
+    """Training-sample weighting: ``none``, ``return_attribution`` (weight each observation
+    by the absolute forward target, so the fit is dominated by the moves that actually pay),
+    ``time_decay`` (linear decay to ``time_decay_floor`` at the oldest training row), or
+    ``both``. Overlapping horizon-h labels are not independent draws; weighting is the cheap
+    part of the Lopez de Prado remedy, purging (already applied in splits.py) is the rest."""
+
+    time_decay_floor: float = 0.25
+    """Weight given to the oldest row of a training block under ``time_decay``."""
+
 
 @dataclass(frozen=True)
 class SplitConfig:
@@ -75,9 +96,24 @@ class SplitConfig:
 @dataclass(frozen=True)
 class ModelConfig:
     name: str = "logistic"
-    """One of ``logistic``, ``gbm``, ``random_forest``."""
+    """``logistic``/``ridge`` (linear), ``random_forest``, ``extra_trees``, ``gbm``,
+    ``hist_gbm``, ``mlp``, or ``ensemble`` (soft-vote of a linear, a forest and a GBM)."""
 
     params: dict[str, Any] = field(default_factory=dict)
+
+    tune: tuple[str, ...] = ()
+    """Hyper-parameters to tune per fold on an inner purged split of the training block
+    (e.g. ``("C",)`` or ``("num_leaves", "learning_rate")``). Empty means use the defaults.
+    Tuning inside the fold keeps the outer test block genuinely out of sample."""
+
+    tune_grid: dict[str, list[Any]] = field(default_factory=dict)
+    """Candidate values per tuned parameter; falls back to :data:`models.DEFAULT_GRIDS`."""
+
+    meta_label: bool = False
+    """Fit a second model that predicts whether the primary model's bet is right, and use
+    its confidence to size the bet (Lopez de Prado meta-labelling). The primary is fit on
+    the front of the training block and the meta model on a purged tail of it, so the meta
+    model never sees the primary's in-sample predictions."""
 
 
 @dataclass(frozen=True)
@@ -123,6 +159,10 @@ class ExperimentConfig:
             raise ValueError(f"unknown label kind: {self.label.kind}")
         if self.backtest.weighting not in {"rank", "threshold"}:
             raise ValueError(f"unknown weighting scheme: {self.backtest.weighting}")
+        if self.label.sample_weight not in {"none", "return_attribution", "time_decay", "both"}:
+            raise ValueError(f"unknown sample weighting: {self.label.sample_weight}")
+        if self.model.meta_label and self.label.kind != "binary":
+            raise ValueError("meta-labelling needs a binary primary label")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

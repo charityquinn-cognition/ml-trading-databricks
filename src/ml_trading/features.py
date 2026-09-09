@@ -69,6 +69,8 @@ def build_features(prices: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
             ].replace(0.0, np.nan)
 
     frame = _add_market_relative_features(frame, config)
+    if config.anomaly_signals:
+        frame = _add_anomaly_signals(frame, config)
 
     base_features = feature_columns(frame)
     extra: list[pd.DataFrame] = []
@@ -114,6 +116,117 @@ def _add_market_relative_features(frame: pd.DataFrame, config: FeatureConfig) ->
         )
     )
     return frame
+
+
+def _add_anomaly_signals(frame: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
+    """Signal families with independent support in the cross-sectional return literature.
+
+    Every one of these is a price/volume construction - no fundamentals are available in
+    this data set - but they cover the three groups that survive across ML studies of the
+    cross-section (momentum, liquidity, volatility) rather than five flavours of momentum.
+    """
+    grouped_close = frame.groupby("symbol")["close"]
+    grouped_returns = frame.groupby("symbol")["log_return_1d"]
+
+    # 52-week-high proximity (George & Hwang): a slow-diffusing anchor, not just momentum.
+    frame["high_52w_ratio"] = grouped_close.transform(
+        lambda s: s / s.rolling(TRADING_DAYS, min_periods=TRADING_DAYS).max() - 1.0
+    )
+    frame["low_52w_ratio"] = grouped_close.transform(
+        lambda s: s / s.rolling(TRADING_DAYS, min_periods=TRADING_DAYS).min() - 1.0
+    )
+
+    # Lottery-demand proxies (Bali, Cakici & Whitelaw): the biggest recent daily move and
+    # the skew of recent returns, both of which predict *low* subsequent returns.
+    frame["max_return_21d"] = grouped_returns.transform(
+        lambda s: s.rolling(21, min_periods=21).max()
+    )
+    frame["min_return_21d"] = grouped_returns.transform(
+        lambda s: s.rolling(21, min_periods=21).min()
+    )
+    frame["return_skew_63d"] = grouped_returns.transform(
+        lambda s: s.rolling(63, min_periods=63).skew()
+    )
+    frame["downside_volatility_63d"] = grouped_returns.transform(
+        lambda s: s.clip(upper=0.0).rolling(63, min_periods=63).std() * np.sqrt(TRADING_DAYS)
+    )
+
+    # Liquidity and size (Amihud): |return| per dollar traded, and traded notional itself.
+    # Both are levels that drift with inflation and market growth, so they are expressed
+    # relative to the same day's universe average to keep the inputs stationary.
+    dollar_volume = frame["close"] * frame["volume"]
+    illiquidity = frame["log_return_1d"].abs() / dollar_volume.replace(0.0, np.nan)
+    smoothed = illiquidity.groupby(frame["symbol"]).transform(
+        lambda s: s.rolling(21, min_periods=21).mean()
+    )
+    frame["amihud_illiquidity"] = _demean_by_date(np.log(smoothed.replace(0.0, np.nan)), frame)
+    traded = dollar_volume.groupby(frame["symbol"]).transform(
+        lambda s: s.rolling(21, min_periods=21).mean()
+    )
+    frame["relative_dollar_volume"] = _demean_by_date(np.log(traded.replace(0.0, np.nan)), frame)
+
+    # Overnight vs intraday: the two components of the same return have opposite-signed
+    # predictability (Lou, Polk & Skouras), so splitting them is not redundant with momentum.
+    intraday = pd.Series(
+        np.log(frame["close"] / frame["open"].replace(0.0, np.nan)), index=frame.index
+    )
+    overnight = frame["gap_open"]
+    frame["intraday_return_21d"] = intraday.groupby(frame["symbol"]).transform(
+        lambda s: s.rolling(21, min_periods=21).sum()
+    )
+    frame["overnight_return_21d"] = overnight.groupby(frame["symbol"]).transform(
+        lambda s: s.rolling(21, min_periods=21).sum()
+    )
+
+    # Residual momentum (Blitz, Huij & Martens): momentum in the part of the return the
+    # market cannot explain, which is a cleaner and less crash-prone signal than raw momentum.
+    residual = frame["idiosyncratic_return_1d"]
+    residual_sum = residual.groupby(frame["symbol"]).transform(
+        lambda s: (
+            s.shift(config.skip_days)
+            .rolling(TRADING_DAYS - config.skip_days, min_periods=126)
+            .sum()
+        )
+    )
+    residual_vol = residual.groupby(frame["symbol"]).transform(
+        lambda s: s.rolling(TRADING_DAYS, min_periods=126).std()
+    )
+    frame["residual_momentum"] = residual_sum / (
+        residual_vol.replace(0.0, np.nan) * np.sqrt(TRADING_DAYS)
+    )
+
+    # Volatility regime and trend, from the managed-futures literature (Baz et al.): a
+    # normalised MACD plus the ratio of fast to slow realised volatility.
+    frame["macd_norm"] = grouped_close.transform(_normalised_macd)
+    fast, slow = frame.get("volatility_21d"), frame.get("volatility_63d")
+    if fast is not None and slow is not None:
+        frame["volatility_regime"] = fast / slow.replace(0.0, np.nan) - 1.0
+
+    # Annual seasonality (Heston & Sadka): the same calendar window in prior years.
+    lags = [TRADING_DAYS * year for year in range(1, config.seasonality_years + 1)]
+    seasonal = [
+        grouped_returns.transform(
+            lambda s, lag=lag: s.shift(lag).rolling(21, min_periods=21).mean()
+        )
+        for lag in lags
+    ]
+    frame["seasonality"] = pd.concat(seasonal, axis=1).mean(axis=1)
+
+    return frame
+
+
+def _demean_by_date(series: pd.Series, frame: pd.DataFrame) -> pd.Series:
+    """Express a level relative to the same day's cross-section, so it does not trend."""
+    return series - series.groupby(frame["date"]).transform("mean")
+
+
+def _normalised_macd(close: pd.Series, fast: int = 21, slow: int = 63) -> pd.Series:
+    """MACD scaled by trailing price volatility so it is comparable across names and regimes."""
+    macd = (
+        close.ewm(span=fast, min_periods=fast).mean()
+        - close.ewm(span=slow, min_periods=slow).mean()
+    )
+    return macd / close.rolling(TRADING_DAYS, min_periods=63).std().replace(0.0, np.nan)
 
 
 def feature_columns(frame: pd.DataFrame) -> list[str]:

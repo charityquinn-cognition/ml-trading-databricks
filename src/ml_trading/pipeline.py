@@ -15,8 +15,9 @@ from ml_trading.config import ExperimentConfig
 from ml_trading.data import load_prices
 from ml_trading.features import build_dataset, feature_columns
 from ml_trading.metrics import information_coefficient
-from ml_trading.models import build_model, feature_importances
+from ml_trading.models import feature_importances
 from ml_trading.splits import Fold, walk_forward_folds
+from ml_trading.training import fit_fold_model
 
 logger = logging.getLogger(__name__)
 
@@ -154,14 +155,7 @@ def _run_fold(
         empty = FoldReport(fold.label, len(train), len(test), np.nan, np.nan)
         return empty, None, {}
 
-    model = build_model(config.model, regression=regression, seed=config.seed)
-
-    if regression:
-        model.fit(train[columns], train["label"].astype(float))
-        score = model.predict(test[columns])
-    else:
-        model.fit(train[columns], train["label"].astype(int))
-        score = model.predict_proba(test[columns])[:, 1]
+    score, model, _ = fit_fold_model(train, test, columns, config)
 
     frame = test.loc[:, ["date", "symbol", "forward_return"]].copy()
     if "forward_excess_return" in test.columns:

@@ -1,0 +1,46 @@
+# Control for the new signal families: the same regularised logistic model as
+# logistic_h21, fed the anomaly block as well. Any difference is the features.
+name: logistic_anomaly
+seed: 7
+
+data:
+  symbols: ["@us_large_cap_plus_etfs"]
+  start: "2005-01-01"
+  end: "2024-12-31"
+  cache_dir: data/cache
+
+features:
+  momentum_windows: [5, 21, 63, 126, 252]
+  skip_momentum_windows: [126, 252]
+  volatility_windows: [21, 63]
+  ma_ratio_windows: [20, 50, 200]
+  rsi_window: 14
+  volume_window: 21
+  cross_sectional_rank: true
+  cross_sectional_zscore: true
+  beta_window: 126
+  anomaly_signals: true
+
+splits:
+  train_years: 6
+  test_years: 1
+  step_years: 1
+  expanding: true
+
+backtest:
+  weighting: rank
+  allow_short: true
+  max_gross_exposure: 1.0
+  cost_bps: 5.0
+  execution_lag: 1
+  volatility_target: 0.10
+
+label:
+  horizon: 21
+  kind: binary
+  excess_of_market: true
+
+model:
+  name: logistic
+  params:
+    C: 0.1

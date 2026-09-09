@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -17,6 +19,8 @@ def config() -> FeatureConfig:
         volatility_windows=(21,),
         ma_ratio_windows=(20,),
         beta_window=63,
+        anomaly_signals=True,
+        seasonality_years=1,
     )
 
 
@@ -96,6 +100,13 @@ def test_build_dataset_drops_incomplete_rows(prices: pd.DataFrame, config: Featu
     dataset = build_dataset(prices, config, LabelConfig(horizon=5))
     assert not dataset[feature_columns(dataset)].isna().any().any()
     assert dataset["date"].min() > prices["date"].min()
+
+
+def test_anomaly_signals_are_opt_in(prices: pd.DataFrame, config: FeatureConfig) -> None:
+    on = feature_columns(build_features(prices, config))
+    off = feature_columns(build_features(prices, replace(config, anomaly_signals=False)))
+    added = set(on) - set(off)
+    assert {"high_52w_ratio", "residual_momentum", "amihud_illiquidity", "macd_norm"} <= added
 
 
 def test_cross_sectional_zscore_is_within_date(config: FeatureConfig) -> None:

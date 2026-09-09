@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from ml_trading.config import ModelConfig
-from ml_trading.models import build_model, feature_importances
+from ml_trading.models import build_model, feature_importances, supports_sample_weight
 
 
 @pytest.fixture
@@ -19,7 +19,11 @@ def xy() -> tuple[pd.DataFrame, pd.Series]:
     return features, target
 
 
-@pytest.mark.parametrize("name", ["logistic", "random_forest", "gbm"])
+CLASSIFIERS = ["logistic", "random_forest", "extra_trees", "gbm", "hist_gbm", "mlp", "ensemble"]
+REGRESSORS = ["ridge", "random_forest", "extra_trees", "gbm", "hist_gbm", "ensemble"]
+
+
+@pytest.mark.parametrize("name", CLASSIFIERS)
 def test_classifiers_fit_and_predict_probabilities(
     name: str, xy: tuple[pd.DataFrame, pd.Series]
 ) -> None:
@@ -30,7 +34,7 @@ def test_classifiers_fit_and_predict_probabilities(
     assert ((proba >= 0) & (proba <= 1)).all()
 
 
-@pytest.mark.parametrize("name", ["ridge", "random_forest", "gbm"])
+@pytest.mark.parametrize("name", REGRESSORS)
 def test_regressors_fit_and_predict(name: str, xy: tuple[pd.DataFrame, pd.Series]) -> None:
     features, target = xy
     model = build_model(ModelConfig(name=name), regression=True, seed=0)
@@ -72,6 +76,24 @@ def test_seed_makes_fits_reproducible(xy: tuple[pd.DataFrame, pd.Series]) -> Non
     np.testing.assert_allclose(
         first.predict_proba(features)[:, 1], second.predict_proba(features)[:, 1]
     )
+
+
+@pytest.mark.parametrize("name", [name for name in CLASSIFIERS if name != "mlp"])
+def test_weighted_fits_are_accepted_by_every_weighted_family(
+    name: str, xy: tuple[pd.DataFrame, pd.Series]
+) -> None:
+    """Sample weights must reach the estimator - including each member of the ensemble."""
+    features, target = xy
+    config = ModelConfig(name=name)
+    assert supports_sample_weight(config)
+    weights = np.linspace(0.5, 1.5, len(features))
+    model = build_model(config, seed=0)
+    model.fit(features, (target > 0).astype(int), model__sample_weight=weights)
+    assert np.isfinite(model.predict_proba(features)[:, 1]).all()
+
+
+def test_the_neural_net_is_declared_unweighted() -> None:
+    assert not supports_sample_weight(ModelConfig(name="mlp"))
 
 
 def test_feature_importances_sum_to_one(xy: tuple[pd.DataFrame, pd.Series]) -> None:
