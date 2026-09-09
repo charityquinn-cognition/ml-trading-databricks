@@ -68,8 +68,11 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     daily = result.backtest.daily
-    yearly = daily.groupby(daily.index.year)[["strategy_return", "benchmark_return"]].sum()
-    print("\nper-year log returns\n" + yearly.round(4).to_string())
+    columns = ["strategy_return", "benchmark_return"]
+    yearly = daily.groupby(daily.index.year)[columns].apply(
+        lambda block: (1.0 + block).prod() - 1.0
+    )
+    print("\nper-year returns\n" + yearly.round(4).to_string())
     return 0
 
 

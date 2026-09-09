@@ -12,6 +12,7 @@ from sklearn.metrics import roc_auc_score
 
 from ml_trading.backtest import BacktestResult, run_backtest, score_matrix
 from ml_trading.config import ExperimentConfig
+from ml_trading.data import load_prices
 from ml_trading.features import build_dataset, feature_columns
 from ml_trading.metrics import information_coefficient
 from ml_trading.models import build_model, feature_importances
@@ -193,18 +194,30 @@ def _run_fold(
 
 def sweep(
     configs: list[ExperimentConfig],
-    prices: pd.DataFrame,
+    prices: pd.DataFrame | None = None,
+    *,
+    refresh_data: bool = False,
 ) -> tuple[pd.DataFrame, list[ExperimentResult]]:
-    """Run several configurations over the same prices and rank them by net Sharpe."""
+    """Run several configurations and rank them by net Sharpe.
+
+    Each config gets the price panel its own ``data`` section asks for, loaded once per
+    distinct panel; pass ``prices`` to force every config onto one panel instead. Feature
+    matrices are shared between configs that agree on data, features and label, which is
+    what makes a model/horizon grid cheap.
+    """
     results: list[ExperimentResult] = []
     rows: list[dict[str, Any]] = []
-    datasets: dict[tuple[Any, Any], pd.DataFrame] = {}
+    panels: dict[Any, pd.DataFrame] = {}
+    datasets: dict[tuple[Any, Any, Any], pd.DataFrame] = {}
     for config in configs:
         logger.info("running experiment %s", config.name)
-        key = (config.features, config.label)
+        if prices is None and config.data not in panels:
+            panels[config.data] = load_prices(config.data, refresh=refresh_data)
+        panel = prices if prices is not None else panels[config.data]
+        key = (config.data, config.features, config.label)
         if key not in datasets:
-            datasets[key] = build_dataset(prices, config.features, config.label)
-        result = run_experiment(config, prices, dataset=datasets[key])
+            datasets[key] = build_dataset(panel, config.features, config.label)
+        result = run_experiment(config, panel, dataset=datasets[key])
         results.append(result)
         row: dict[str, Any] = {"name": config.name, "model": config.model.name}
         row.update(result.metrics())

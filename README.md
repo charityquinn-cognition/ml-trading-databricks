@@ -70,7 +70,7 @@ src/ml_trading/
   tracking.py    MLflow logging (optional)
 configs/         one YAML per experiment
 scripts/         diagnose.py: IC t-stats, cost sensitivity, per-year returns
-tests/           76 tests, including explicit look-ahead guards
+tests/           unit tests, including explicit look-ahead guards
 ```
 
 ## Quickstart
@@ -126,7 +126,7 @@ makes it unit-testable off-cluster.
 ## Development
 
 ```bash
-pytest -q          # 76 tests
+pytest -q
 ruff check src tests scripts && ruff format --check src tests scripts
 mypy
 ```

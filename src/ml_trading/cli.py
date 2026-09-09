@@ -93,8 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     configs = [ExperimentConfig.from_yaml(path) for path in sorted(args.config_dir.glob("*.yaml"))]
     if not configs:
         raise SystemExit(f"no *.yaml configs found in {args.config_dir}")
-    prices = load_prices(configs[0].data, refresh=args.refresh_data)
-    table, results = sweep(configs, prices)
+    table, results = sweep(configs, refresh_data=args.refresh_data)
 
     # A sweep is a multiple-testing exercise: the best Sharpe of N tries is biased upward,
     # so report each row against the expected maximum of N zero-skill trials.

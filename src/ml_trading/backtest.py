@@ -3,8 +3,9 @@
 The original notebook multiplied a signal by the *same day's* return, which both
 looks ahead and mismatches the 5-day label horizon. This module fixes both:
 
-* positions are held for the full label horizon by averaging the last ``horizon``
-  daily target books, so exactly ``1 / horizon`` of the portfolio turns over per day;
+* each day's target book is entered as a ``1 / horizon`` tranche and held for the label
+  horizon, so only the tranche that expires - plus whatever the new book disagrees with -
+  trades on any given day;
 * positions are shifted forward by ``execution_lag`` days before they earn anything,
   so a signal computed from the close of ``t`` earns the return of ``t+1`` onwards;
 * trading costs are charged on realised turnover, and leverage is set from *trailing*
@@ -82,8 +83,10 @@ def run_backtest(
     returns = returns.reindex(columns=scores.columns)
 
     target = signal_to_weights(scores, config)
-    # Hold each book for the label horizon: 1/horizon of the portfolio rolls each day.
-    held = target.rolling(horizon, min_periods=1).mean()
+    # Overlapping tranches: 1/horizon of each of the last `horizon` books. Using sum/horizon
+    # rather than a rolling mean keeps each tranche at 1/horizon while the book warms up,
+    # instead of putting the whole portfolio behind the very first signal.
+    held = target.rolling(horizon, min_periods=1).sum() / horizon
     # Execution lag: a signal from the close of t can only earn returns from t+lag.
     held = held.shift(config.execution_lag).fillna(0.0)
 
