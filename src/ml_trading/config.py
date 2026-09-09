@@ -1,0 +1,172 @@
+"""Typed configuration for a walk-forward trading experiment."""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field, fields
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+@dataclass(frozen=True)
+class DataConfig:
+    symbols: tuple[str, ...] = ("SPY", "QQQ", "AAPL", "MSFT", "XLE", "XLF", "XLK", "TLT")
+    start: str = "2005-01-01"
+    end: str = "2024-12-31"
+    cache_dir: str = "data/cache"
+
+
+@dataclass(frozen=True)
+class FeatureConfig:
+    """All windows are in trading days."""
+
+    momentum_windows: tuple[int, ...] = (5, 21, 63, 126, 252)
+    skip_momentum_windows: tuple[int, ...] = (126, 252)
+    """Momentum measured over N days but skipping the most recent month.
+
+    The classic cross-sectional momentum anomaly is 12-1: including the latest month
+    mixes in short-term reversal, which pushes the other way.
+    """
+
+    skip_days: int = 21
+    volatility_windows: tuple[int, ...] = (21, 63)
+    ma_ratio_windows: tuple[int, ...] = (20, 50, 200)
+    rsi_window: int = 14
+    volume_window: int = 21
+    zscore_window: int = 252
+    cross_sectional_rank: bool = True
+    cross_sectional_zscore: bool = True
+    """Replace each feature with its within-date z-score so the pooled model sees
+    comparable inputs across regimes."""
+
+    beta_window: int = 126
+    """Window for the rolling beta of each symbol to the equal-weight market."""
+
+
+@dataclass(frozen=True)
+class LabelConfig:
+    horizon: int = 5
+    """Number of trading days the forward return spans."""
+
+    kind: str = "binary"
+    """``binary`` (sign of the forward excess return) or ``continuous``."""
+
+    excess_of_market: bool = True
+    """Label the return relative to the cross-sectional mean, not the raw return."""
+
+    volatility_normalize: bool = True
+    """For ``continuous`` labels, divide by trailing volatility so high-vol names do not
+    dominate the regression loss."""
+
+    winsorize: float = 0.01
+    """For ``continuous`` labels, clip each day's target at this quantile from both tails."""
+
+
+@dataclass(frozen=True)
+class SplitConfig:
+    train_years: float = 6.0
+    test_years: float = 1.0
+    step_years: float = 1.0
+    expanding: bool = True
+    """Grow the training window each fold instead of rolling a fixed-length one."""
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    name: str = "logistic"
+    """One of ``logistic``, ``gbm``, ``random_forest``."""
+
+    params: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class BacktestConfig:
+    weighting: str = "rank"
+    """``rank`` for a dollar-neutral cross-sectional book, ``threshold`` for +1/0/-1 bets."""
+
+    long_threshold: float = 0.55
+    short_threshold: float = 0.45
+    allow_short: bool = True
+    max_gross_exposure: float = 1.0
+    """Sum of absolute position weights is scaled down to at most this value."""
+
+    cost_bps: float = 5.0
+    """Round-trip transaction cost in basis points of traded notional."""
+
+    execution_lag: int = 1
+    """Trading days between the signal timestamp and the first return earned."""
+
+    volatility_target: float | None = 0.10
+    """Annualised volatility target for the portfolio, or ``None`` to disable."""
+
+
+@dataclass(frozen=True)
+class ExperimentConfig:
+    name: str = "baseline"
+    seed: int = 7
+    data: DataConfig = field(default_factory=DataConfig)
+    features: FeatureConfig = field(default_factory=FeatureConfig)
+    label: LabelConfig = field(default_factory=LabelConfig)
+    splits: SplitConfig = field(default_factory=SplitConfig)
+    model: ModelConfig = field(default_factory=ModelConfig)
+    backtest: BacktestConfig = field(default_factory=BacktestConfig)
+
+    def __post_init__(self) -> None:
+        if self.label.horizon < 1:
+            raise ValueError("label.horizon must be >= 1")
+        if self.backtest.execution_lag < 1:
+            raise ValueError("backtest.execution_lag must be >= 1 to avoid look-ahead")
+        if self.backtest.short_threshold > self.backtest.long_threshold:
+            raise ValueError("short_threshold must not exceed long_threshold")
+        if self.label.kind not in {"binary", "continuous"}:
+            raise ValueError(f"unknown label kind: {self.label.kind}")
+        if self.backtest.weighting not in {"rank", "threshold"}:
+            raise ValueError(f"unknown weighting scheme: {self.backtest.weighting}")
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def flat_params(self) -> dict[str, Any]:
+        """Flatten the config into ``section.key`` pairs suitable for MLflow logging."""
+        flat: dict[str, Any] = {"name": self.name, "seed": self.seed}
+        for section, value in self.to_dict().items():
+            if isinstance(value, dict):
+                for key, inner in value.items():
+                    flat[f"{section}.{key}"] = inner
+        return flat
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> ExperimentConfig:
+        section_types = {f.name: f.type for f in fields(cls)}
+        kwargs: dict[str, Any] = {}
+        for key, value in raw.items():
+            if key not in section_types:
+                raise ValueError(f"unknown config key: {key}")
+            if isinstance(value, dict):
+                kwargs[key] = _SECTIONS[key](**_tuplify(value))
+            else:
+                kwargs[key] = value
+        return cls(**kwargs)
+
+    @classmethod
+    def from_yaml(cls, path: str | Path) -> ExperimentConfig:
+        raw = yaml.safe_load(Path(path).read_text()) or {}
+        return cls.from_dict(raw)
+
+
+_SECTIONS: dict[str, Any] = {
+    "data": DataConfig,
+    "features": FeatureConfig,
+    "label": LabelConfig,
+    "splits": SplitConfig,
+    "model": ModelConfig,
+    "backtest": BacktestConfig,
+}
+
+
+def _tuplify(section: dict[str, Any]) -> dict[str, Any]:
+    """YAML gives lists; the dataclasses are frozen and want tuples."""
+    return {
+        key: tuple(value) if isinstance(value, list) else value for key, value in section.items()
+    }
