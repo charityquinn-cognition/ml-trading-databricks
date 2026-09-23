@@ -7,8 +7,15 @@ out-of-sample periods.
 
 Because a label at date ``t`` spans ``t .. t + horizon``, the last ``horizon`` days of
 a training block overlap the first days of the test block. Those rows are *purged*
-from training, and an additional embargo is applied after the test block, following
-Lopez de Prado's Advances in Financial Machine Learning (ch. 7).
+from training, following Lopez de Prado's Advances in Financial Machine Learning
+(ch. 7).
+
+The embargo in that chapter protects training rows that come *after* a test block from
+serial correlation with it. Walk-forward only ever trains on history, so nothing needs
+embargoing here and the default is zero: trimming the head of each test block would
+punch a hole in the out-of-sample calendar every time a fold rolls, and the concatenated
+scores the backtest consumes would then jump silently across the missing days. The
+parameter stays available for callers who want the extra separation.
 """
 
 from __future__ import annotations
@@ -57,12 +64,12 @@ def walk_forward_folds(
     if dates.empty:
         return []
 
-    embargo_days = horizon if embargo is None else embargo
+    embargo_days = 0 if embargo is None else embargo
     train_span = pd.Timedelta(days=years_to_days(config.train_years))
     test_span = pd.Timedelta(days=years_to_days(config.test_years))
     step = pd.Timedelta(days=years_to_days(config.step_years))
     purge = pd.Timedelta(days=_calendar_days(horizon))
-    embargo_span = pd.Timedelta(days=_calendar_days(embargo_days))
+    embargo_span = pd.Timedelta(days=_calendar_days(embargo_days) if embargo_days else 0)
 
     history_start = dates.min()
     last_date = dates.max()
@@ -76,7 +83,8 @@ def walk_forward_folds(
         train_end = test_start - purge
 
         train_mask = ((dates >= train_start) & (dates <= train_end)).to_numpy()
-        test_mask = ((dates >= test_start + embargo_span) & (dates <= test_end)).to_numpy()
+        test_open = test_start + embargo_span
+        test_mask = ((dates >= test_open) & (dates <= test_end)).to_numpy()
 
         if train_mask.sum() > 0 and test_mask.sum() > 0:
             folds.append(

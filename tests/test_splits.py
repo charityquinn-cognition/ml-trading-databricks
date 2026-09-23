@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from itertools import pairwise
+
 import pandas as pd
 
 from ml_trading.config import SplitConfig
@@ -38,6 +40,26 @@ def test_embargo_removes_the_start_of_the_test_block() -> None:
     none = walk_forward_folds(dates, config, horizon=5, embargo=0)
     embargoed = walk_forward_folds(dates, config, horizon=5, embargo=40)
     assert embargoed[0].test_mask.sum() < none[0].test_mask.sum()
+
+
+def test_default_test_blocks_cover_every_trading_date_without_gaps() -> None:
+    """Concatenated out-of-sample dates must be a contiguous calendar, or the backtest
+    would silently treat days either side of a hole as consecutive."""
+    dates = _dates()
+    folds = walk_forward_folds(dates, SplitConfig(train_years=4), horizon=21)
+    assert len(folds) >= 3
+
+    tested = sorted({date for fold in folds for date in dates[fold.test_mask]})
+    expected = [date for date in dates if folds[0].test_start <= date <= folds[-1].test_end]
+    assert tested == expected
+
+    for earlier, later in pairwise(folds):
+        assert dates[later.test_mask].min() <= _next_date(dates, dates[earlier.test_mask].max())
+
+
+def _next_date(dates: pd.Series, date: pd.Timestamp) -> pd.Timestamp:
+    after = dates[dates > date]
+    return after.min() if len(after) else date
 
 
 def test_expanding_grows_and_rolling_does_not() -> None:

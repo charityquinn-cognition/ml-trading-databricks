@@ -164,3 +164,21 @@ def test_benchmark_is_rebalanced_daily_not_buy_and_hold(config: BacktestConfig) 
     growth = (1.0 + returns).cumprod()
     hold_equity = growth.mean(axis=1)
     assert abs(hold_equity.iloc[-1] - result.daily["benchmark_equity"].iloc[-1]) > 1e-6
+
+
+def test_a_gap_in_the_scores_ages_the_book_out_instead_of_carrying_it(
+    config: BacktestConfig,
+) -> None:
+    """Dropping dates from the score panel must not make the backtest skip those sessions."""
+    prices = make_prices(days=120)
+    scores = _scores(prices)
+    gap = scores.index[60:80]
+    sparse = scores.drop(index=gap)
+
+    result = run_backtest(sparse, prices, config, horizon=5)
+
+    assert set(gap) <= set(result.daily.index)
+    # Five days of tranches expire over the gap, after which nothing is held.
+    flat = result.positions.loc[gap[8:]].abs().sum(axis=1)
+    assert flat.max() == pytest.approx(0.0)
+    assert result.daily.loc[gap[8:], "turnover"].max() == pytest.approx(0.0)
