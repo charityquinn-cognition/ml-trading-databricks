@@ -17,21 +17,21 @@ execution lag. `_anomaly` configs add the literature signal block
 
 | config | net Sharpe | ann. return | max DD | p-value | deflated Sharpe | mean fold IC |
 |---|---|---|---|---|---|---|
-| `extra_trees_anomaly` | 0.81 | 7.2% | -18.2% | 0.003 | 0.86 | 0.043 |
-| `gbm_anomaly_tuned` | 0.71 | 5.9% | -18.7% | 0.008 | 0.78 | 0.038 |
-| `ensemble_anomaly` | 0.63 | 5.3% | -10.8% | 0.016 | 0.69 | 0.039 |
-| `gbm_anomaly` | 0.60 | 4.8% | -11.5% | 0.020 | 0.65 | 0.034 |
-| `gbm_anomaly_meta` | 0.59 | 4.7% | -11.7% | 0.022 | 0.63 | 0.034 |
-| `logistic_anomaly` | 0.57 | 4.7% | -14.0% | 0.026 | 0.61 | 0.035 |
-| `gbm_anomaly_weighted` | 0.32 | 2.3% | -18.3% | 0.138 | 0.28 | 0.025 |
-| `logistic_h21` | 0.27 | 2.1% | -24.8% | 0.174 | 0.23 | 0.024 |
-| `gbm_h21` | 0.21 | 1.4% | -15.5% | 0.239 | 0.17 | 0.017 |
-| `baseline_logistic` (5d) | 0.03 | -0.2% | -37.3% | 0.464 | 0.06 | 0.026 |
-| `mlp_anomaly` | -0.06 | -0.8% | -25.8% | 0.588 | 0.03 | 0.005 |
-| `ridge_h21_continuous` | -0.11 | -1.4% | -36.6% | 0.647 | 0.02 | 0.008 |
+| `extra_trees_anomaly` | 0.78 | 6.9% | -24.4% | 0.003 | 0.87 | 0.041 |
+| `gbm_anomaly_tuned` | 0.73 | 6.1% | -20.8% | 0.005 | 0.83 | 0.036 |
+| `gbm_anomaly` | 0.62 | 4.9% | -16.0% | 0.013 | 0.71 | 0.033 |
+| `gbm_anomaly_meta` | 0.61 | 4.8% | -16.1% | 0.015 | 0.69 | 0.033 |
+| `ensemble_anomaly` | 0.57 | 4.7% | -19.6% | 0.021 | 0.64 | 0.036 |
+| `logistic_anomaly` | 0.48 | 3.9% | -16.6% | 0.043 | 0.52 | 0.032 |
+| `gbm_anomaly_weighted` | 0.40 | 3.0% | -23.7% | 0.075 | 0.41 | 0.026 |
+| `gbm_h21` | 0.31 | 2.3% | -17.4% | 0.133 | 0.29 | 0.018 |
+| `logistic_h21` | 0.28 | 2.2% | -23.4% | 0.154 | 0.26 | 0.024 |
+| `mlp_anomaly` | 0.04 | 0.0% | -20.0% | 0.446 | 0.06 | 0.009 |
+| `baseline_logistic` (5d) | -0.03 | -0.8% | -41.2% | 0.547 | 0.04 | 0.022 |
+| `ridge_h21_continuous` | -0.18 | -2.1% | -41.8% | 0.736 | 0.01 | 0.005 |
 
 Benchmark (equal-weight in the same universe, rebalanced daily and costlessly) is
-Sharpe 1.00, +15.9% a year, -30.4% max drawdown.
+Sharpe 1.05, +16.5% a year, -35.3% max drawdown.
 
 What the table supports, and what it does not:
 
@@ -40,14 +40,14 @@ What the table supports, and what it does not:
   further ~0.1-0.25. That ordering matches the asset-pricing ML literature (Gu, Kelly &
   Xiu): nonlinearity helps, but only once the predictors are there.
 - **The best config survives its own multiple testing.** Twelve configurations were run;
-  the deflated Sharpe for `extra_trees_anomaly` is 0.86, i.e. ~86% probability the Sharpe
+  the deflated Sharpe for `extra_trees_anomaly` is 0.87, i.e. ~87% probability the Sharpe
   is genuinely positive after adjusting for the number of trials.
-- **It survives costs.** At 0.071 daily turnover: 0bps → 0.91, 5bps → 0.81, 10bps → 0.71,
-  20bps → 0.51. Daily cross-sectional IC is 0.043 (t = 14.3).
-- **It is a diversifier, not a replacement for the index.** The long/short book earns 7.2%
-  a year at 9% volatility against 15.9% at 16% for holding the universe. Its worst year
-  is -2.6% (2020) and it made +12.5% in 2022 while the universe lost 4.9%, so the case for
-  it is low correlation, not standalone return.
+- **It survives costs.** At 0.071 daily turnover: 0bps → 0.88, 5bps → 0.78, 10bps → 0.68,
+  20bps → 0.49. Daily cross-sectional IC is 0.041 (t = 14.4).
+- **It is a diversifier, not a replacement for the index.** The long/short book earns 6.9%
+  a year at 9.2% volatility against 16.5% at 15.9% for holding the universe. Its worst year
+  is -11.1% (2020, the momentum crash) and it made +11.7% in 2022 while the universe lost
+  6.1%, so the case for it is low correlation, not standalone return.
 - **The edge is mostly slow characteristic tilts.** The top features are cross-sectional
   ranks of Amihud illiquidity, dollar volume, beta and volatility - i.e. the book is
   substantially harvesting the illiquidity, low-beta and low-volatility premia rather than
@@ -55,9 +55,9 @@ What the table supports, and what it does not:
   next test is whether it survives *neutralising* those exposures; until then, treat it as
   a factor portfolio, not alpha.
 - **Two of the more elaborate ideas did not work here.** Sample weighting by
-  |forward return| and recency halved the Sharpe (0.60 → 0.32) - the "redundant"
-  overlapping rows were carrying signal, not noise. Meta-labelling was a wash (0.60 →
-  0.59), and the MLP failed outright. They are kept in the codebase because the negative
+  |forward return| and recency cut the Sharpe by a third (0.62 → 0.40) - the "redundant"
+  overlapping rows were carrying signal, not noise. Meta-labelling was a wash (0.62 →
+  0.61), and the MLP failed outright. They are kept in the codebase because the negative
   result is the useful part.
 
 Caveat that outranks all of the above: the universe is *current* large caps, so the
