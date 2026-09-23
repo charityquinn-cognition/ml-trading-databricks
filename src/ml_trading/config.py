@@ -83,6 +83,11 @@ class LabelConfig:
     """Weight given to the oldest row of a training block under ``time_decay``."""
 
 
+def years_to_days(years: float) -> int:
+    """Whole calendar days in a span of years, as the split machinery measures it."""
+    return round(years * 365.25)
+
+
 @dataclass(frozen=True)
 class SplitConfig:
     train_years: float = 6.0
@@ -150,10 +155,13 @@ class ExperimentConfig:
     def __post_init__(self) -> None:
         if self.label.horizon < 1:
             raise ValueError("label.horizon must be >= 1")
-        if min(self.splits.train_years, self.splits.test_years, self.splits.step_years) <= 0:
-            # A non-positive step never advances the walk-forward window: the fold loop
-            # would run forever rather than fail.
-            raise ValueError("splits.train_years, test_years and step_years must all be > 0")
+        spans = (self.splits.train_years, self.splits.test_years, self.splits.step_years)
+        if min(years_to_days(span) for span in spans) <= 0:
+            # Measured in whole days, as walk_forward_folds does: a step that rounds to
+            # zero days never advances the window, so the fold loop would spin forever.
+            raise ValueError(
+                "splits.train_years, test_years and step_years must each be at least one day"
+            )
         if self.backtest.execution_lag < 1:
             raise ValueError("backtest.execution_lag must be >= 1 to avoid look-ahead")
         if self.backtest.short_threshold > self.backtest.long_threshold:

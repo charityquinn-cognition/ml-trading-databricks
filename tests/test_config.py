@@ -25,10 +25,11 @@ def test_horizon_below_one_is_rejected() -> None:
 
 
 @pytest.mark.parametrize("field", ["train_years", "test_years", "step_years"])
-def test_nonpositive_split_years_are_rejected(field: str) -> None:
-    """A step of zero would leave the walk-forward loop advancing nowhere, forever."""
+@pytest.mark.parametrize("value", [0.0, -1.0, 0.001])
+def test_split_years_below_a_day_are_rejected(field: str, value: float) -> None:
+    """A step that rounds to zero days leaves the walk-forward loop advancing nowhere."""
     with pytest.raises(ValueError, match="step_years"):
-        ExperimentConfig(splits=SplitConfig(**{field: 0.0}))
+        ExperimentConfig(splits=SplitConfig(**{field: value}))
 
 
 def test_inverted_thresholds_are_rejected() -> None:

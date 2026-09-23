@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from ml_trading.config import years_to_days
+
 if TYPE_CHECKING:
     from ml_trading.config import SplitConfig
 
@@ -56,9 +58,9 @@ def walk_forward_folds(
         return []
 
     embargo_days = horizon if embargo is None else embargo
-    train_span = pd.Timedelta(days=round(config.train_years * 365.25))
-    test_span = pd.Timedelta(days=round(config.test_years * 365.25))
-    step = pd.Timedelta(days=round(config.step_years * 365.25))
+    train_span = pd.Timedelta(days=years_to_days(config.train_years))
+    test_span = pd.Timedelta(days=years_to_days(config.test_years))
+    step = pd.Timedelta(days=years_to_days(config.step_years))
     purge = pd.Timedelta(days=_calendar_days(horizon))
     embargo_span = pd.Timedelta(days=_calendar_days(embargo_days))
 
