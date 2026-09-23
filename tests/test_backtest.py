@@ -187,12 +187,15 @@ def test_a_gap_in_the_scores_ages_the_book_out_instead_of_carrying_it(
 def test_scores_dated_off_the_trading_calendar_are_dropped(config: BacktestConfig) -> None:
     """A weekend row would shift every tranche and execution lag that straddles it."""
     prices = make_prices(days=120)
+    # Start on a Tuesday, so the stray Saturday before it encloses a Monday session that
+    # no real score spans.
     scores = _scores(prices)
-    friday = next(i for i, date in enumerate(scores.index) if date.dayofweek == 4)
-    weekend = scores.index[friday] + pd.Timedelta(days=1)
-    assert weekend not in scores.index
+    tuesday = next(i for i, date in enumerate(scores.index) if date.dayofweek == 1 and i > 1)
+    scores = scores.iloc[tuesday:]
+    weekend = scores.index[0] - pd.Timedelta(days=3)
+    assert weekend.dayofweek == 5
 
-    with_weekend = pd.concat([scores, scores.iloc[[friday]].set_axis([weekend])]).sort_index()
+    with_weekend = pd.concat([scores, scores.iloc[[0]].set_axis([weekend])]).sort_index()
     result = run_backtest(with_weekend, prices, config, horizon=5)
     clean = run_backtest(scores, prices, config, horizon=5)
 

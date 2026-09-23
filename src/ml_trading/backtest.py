@@ -143,6 +143,7 @@ def _on_trading_calendar(scores: pd.DataFrame, calendar: pd.Index) -> pd.DataFra
     the calendar are dropped rather than kept: nothing trades on a day the market is
     closed, and an extra row would shift every tranche and execution lag around it.
     """
+    scores = scores.loc[scores.index.isin(calendar)]
     if scores.empty:
         return scores
     return scores.reindex(
