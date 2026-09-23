@@ -134,17 +134,20 @@ def run_backtest(
 
 
 def _on_trading_calendar(scores: pd.DataFrame, calendar: pd.Index) -> pd.DataFrame:
-    """Fill the scored range out to every trading date, scoring the gaps as no signal.
+    """Put the scored range on every trading date it spans, scoring the gaps as no signal.
 
     Rolling tranches and turnover are counted in rows, so a score panel with days missing
     would treat either side of the hole as consecutive sessions. Reinstating the dates
     leaves the missing days with an empty book, which ages the existing tranches out
-    through the gap instead of teleporting the old positions across it.
+    through the gap instead of teleporting the old positions across it. Scores dated off
+    the calendar are dropped rather than kept: nothing trades on a day the market is
+    closed, and an extra row would shift every tranche and execution lag around it.
     """
     if scores.empty:
         return scores
-    spanned = calendar[(calendar >= scores.index.min()) & (calendar <= scores.index.max())]
-    return scores.reindex(index=spanned.union(scores.index))
+    return scores.reindex(
+        index=calendar[(calendar >= scores.index.min()) & (calendar <= scores.index.max())]
+    )
 
 
 def _rank_weights(scores: pd.DataFrame, *, allow_short: bool) -> pd.DataFrame:

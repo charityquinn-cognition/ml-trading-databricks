@@ -182,3 +182,19 @@ def test_a_gap_in_the_scores_ages_the_book_out_instead_of_carrying_it(
     flat = result.positions.loc[gap[8:]].abs().sum(axis=1)
     assert flat.max() == pytest.approx(0.0)
     assert result.daily.loc[gap[8:], "turnover"].max() == pytest.approx(0.0)
+
+
+def test_scores_dated_off_the_trading_calendar_are_dropped(config: BacktestConfig) -> None:
+    """A weekend row would shift every tranche and execution lag that straddles it."""
+    prices = make_prices(days=120)
+    scores = _scores(prices)
+    friday = next(i for i, date in enumerate(scores.index) if date.dayofweek == 4)
+    weekend = scores.index[friday] + pd.Timedelta(days=1)
+    assert weekend not in scores.index
+
+    with_weekend = pd.concat([scores, scores.iloc[[friday]].set_axis([weekend])]).sort_index()
+    result = run_backtest(with_weekend, prices, config, horizon=5)
+    clean = run_backtest(scores, prices, config, horizon=5)
+
+    assert weekend not in result.positions.index
+    pd.testing.assert_frame_equal(result.positions, clean.positions)
