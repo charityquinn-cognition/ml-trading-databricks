@@ -6,10 +6,43 @@ import pytest
 
 from ml_trading.metrics import (
     TRADING_DAYS,
+    cross_sectional_ic,
     deflated_sharpe_ratio,
     information_coefficient,
+    mean_cross_sectional_ic,
     performance_stats,
 )
+
+
+def _panel_with_shared_trend() -> pd.DataFrame:
+    """A panel where the score knows the day but ranks names backwards within it."""
+    rows = []
+    for day, level in enumerate([-0.05, 0.05, -0.04, 0.06]):
+        for rank, symbol in enumerate("ABCD"):
+            rows.append(
+                {
+                    "date": pd.Timestamp("2020-01-01") + pd.Timedelta(days=day),
+                    "symbol": symbol,
+                    "score": level + rank * 1e-3,
+                    "forward_return": level - rank * 1e-3,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def test_pooled_ic_is_fooled_by_a_shared_daily_trend() -> None:
+    panel = _panel_with_shared_trend()
+    pooled = information_coefficient(panel["score"], panel["forward_return"])
+    within_date = mean_cross_sectional_ic(panel, score="score", target="forward_return")
+    assert pooled > 0.8
+    assert within_date == pytest.approx(-1.0)
+
+
+def test_cross_sectional_ic_returns_one_value_per_date() -> None:
+    panel = _panel_with_shared_trend()
+    daily = cross_sectional_ic(panel, score="score", target="forward_return")
+    assert list(daily.index) == sorted(panel["date"].unique())
+    assert np.allclose(daily.to_numpy(), -1.0)
 
 
 def test_sharpe_matches_the_closed_form() -> None:

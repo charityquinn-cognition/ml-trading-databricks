@@ -30,8 +30,8 @@ execution lag. `_anomaly` configs add the literature signal block
 | `mlp_anomaly` | -0.06 | -0.8% | -25.8% | 0.588 | 0.03 | 0.005 |
 | `ridge_h21_continuous` | -0.11 | -1.4% | -36.6% | 0.647 | 0.02 | 0.008 |
 
-Benchmark (equal-weight buy-and-hold of the same universe) is Sharpe 1.00, +15.9% a year,
--30.4% max drawdown.
+Benchmark (equal-weight in the same universe, rebalanced daily and costlessly) is
+Sharpe 1.00, +15.9% a year, -30.4% max drawdown.
 
 What the table supports, and what it does not:
 

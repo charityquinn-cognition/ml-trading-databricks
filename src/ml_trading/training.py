@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
-from ml_trading.metrics import information_coefficient
+from ml_trading.metrics import mean_cross_sectional_ic
 from ml_trading.models import build_model, parameter_grid, supports_sample_weight
 
 if TYPE_CHECKING:
@@ -112,11 +112,10 @@ def tuned_parameters(
         )
         _fit(model, inner_train, columns, config)
         scores = predict_scores(model, inner_validation[columns], regression=regression)
-        # Rank correlation with the forward target, which is what the book actually trades,
-        # rather than log-loss on a label that is 51% noise.
-        score = information_coefficient(
-            pd.Series(scores, index=inner_validation.index), inner_validation[target_column]
-        )
+        # Within-date rank correlation with the forward target, which is what the book
+        # actually trades, rather than log-loss on a label that is 51% noise.
+        scored = inner_validation[["date", target_column]].assign(score=scores)
+        score = mean_cross_sectional_ic(scored, score="score", target=target_column)
         if np.isfinite(score) and score > best_score:
             best_score, best = score, candidate
     logger.info("tuned %s -> %s (inner ic=%.4f)", config.model.name, best, best_score)

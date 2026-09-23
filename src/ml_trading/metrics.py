@@ -112,3 +112,25 @@ def information_coefficient(predictions: pd.Series, realised: pd.Series) -> floa
     if len(frame) < 3 or frame["p"].nunique() < 2:
         return float("nan")
     return float(stats.spearmanr(frame["p"], frame["r"]).statistic)
+
+
+def cross_sectional_ic(
+    frame: pd.DataFrame,
+    *,
+    score: str,
+    target: str,
+    date: str = "date",
+) -> pd.Series:
+    """Spearman correlation between signal and forward return *within each date*.
+
+    Pooling a panel into one correlation measures something else: a signal that only
+    knows which days were good for everything scores well pooled while picking no
+    winners on any given day, which is the only skill a cross-sectional book can trade.
+    """
+    grouped = frame[[score, target]].groupby(frame[date], sort=True)
+    return grouped.apply(lambda block: information_coefficient(block[score], block[target]))
+
+
+def mean_cross_sectional_ic(frame: pd.DataFrame, *, score: str, target: str) -> float:
+    daily = cross_sectional_ic(frame, score=score, target=target)
+    return float(np.nanmean(daily)) if len(daily) else float("nan")

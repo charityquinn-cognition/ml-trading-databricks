@@ -34,7 +34,6 @@ class FeatureConfig:
     ma_ratio_windows: tuple[int, ...] = (20, 50, 200)
     rsi_window: int = 14
     volume_window: int = 21
-    zscore_window: int = 252
     cross_sectional_rank: bool = True
     cross_sectional_zscore: bool = True
     """Replace each feature with its within-date z-score so the pooled model sees
@@ -151,6 +150,10 @@ class ExperimentConfig:
     def __post_init__(self) -> None:
         if self.label.horizon < 1:
             raise ValueError("label.horizon must be >= 1")
+        if min(self.splits.train_years, self.splits.test_years, self.splits.step_years) <= 0:
+            # A non-positive step never advances the walk-forward window: the fold loop
+            # would run forever rather than fail.
+            raise ValueError("splits.train_years, test_years and step_years must all be > 0")
         if self.backtest.execution_lag < 1:
             raise ValueError("backtest.execution_lag must be >= 1 to avoid look-ahead")
         if self.backtest.short_threshold > self.backtest.long_threshold:

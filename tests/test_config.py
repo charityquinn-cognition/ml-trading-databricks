@@ -5,7 +5,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ml_trading.config import BacktestConfig, ExperimentConfig, LabelConfig, ModelConfig
+from ml_trading.config import (
+    BacktestConfig,
+    ExperimentConfig,
+    LabelConfig,
+    ModelConfig,
+    SplitConfig,
+)
 
 
 def test_execution_lag_below_one_is_rejected() -> None:
@@ -16,6 +22,13 @@ def test_execution_lag_below_one_is_rejected() -> None:
 def test_horizon_below_one_is_rejected() -> None:
     with pytest.raises(ValueError, match="horizon"):
         ExperimentConfig(label=LabelConfig(horizon=0))
+
+
+@pytest.mark.parametrize("field", ["train_years", "test_years", "step_years"])
+def test_nonpositive_split_years_are_rejected(field: str) -> None:
+    """A step of zero would leave the walk-forward loop advancing nowhere, forever."""
+    with pytest.raises(ValueError, match="step_years"):
+        ExperimentConfig(splits=SplitConfig(**{field: 0.0}))
 
 
 def test_inverted_thresholds_are_rejected() -> None:

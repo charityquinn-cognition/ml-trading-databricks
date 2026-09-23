@@ -145,3 +145,22 @@ def test_missing_scores_produce_no_position(config: BacktestConfig) -> None:
     )
     weights = signal_to_weights(scores, config)
     assert weights.loc[:, "B"].iloc[0] == 0.0
+
+
+def test_benchmark_is_rebalanced_daily_not_buy_and_hold(config: BacktestConfig) -> None:
+    """The benchmark is the daily equal-weight average, which drifting weights would not give."""
+    prices = make_prices(days=300)
+    result = run_backtest(_scores(prices), prices, config, horizon=5)
+
+    returns = daily_returns_matrix(prices).loc[result.daily.index]
+    pd.testing.assert_series_equal(
+        result.daily["benchmark_return"],
+        returns.mean(axis=1),
+        check_names=False,
+    )
+
+    # Buy-and-hold lets the compounding winners dominate, so on a panel with different
+    # return paths the two portfolios must not coincide.
+    growth = (1.0 + returns).cumprod()
+    hold_equity = growth.mean(axis=1)
+    assert abs(hold_equity.iloc[-1] - result.daily["benchmark_equity"].iloc[-1]) > 1e-6

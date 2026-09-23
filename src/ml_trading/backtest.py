@@ -102,6 +102,10 @@ def run_backtest(
     cost = turnover * config.cost_bps / 10_000.0
     strategy_net = strategy_gross - cost
 
+    # Equal-weight *and rebalanced daily*, not buy-and-hold: the panel's membership
+    # changes as names enter and leave the sample, so drifting weights from a fixed
+    # initial notional are not well defined here. Rebalancing is assumed costless,
+    # which if anything flatters the benchmark relative to the costed strategy.
     benchmark = returns.mean(axis=1)
 
     daily = pd.DataFrame(

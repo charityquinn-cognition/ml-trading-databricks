@@ -26,7 +26,6 @@ FEATURES = FeatureConfig(
     skip_momentum_windows=(63,),
     volatility_windows=(21,),
     ma_ratio_windows=(20,),
-    zscore_window=63,
     beta_window=63,
 )
 SPLITS = SplitConfig(train_years=1.5, test_years=0.5, step_years=0.5)

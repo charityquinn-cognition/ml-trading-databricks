@@ -14,7 +14,7 @@ from ml_trading.backtest import BacktestResult, run_backtest, score_matrix
 from ml_trading.config import ExperimentConfig
 from ml_trading.data import load_prices
 from ml_trading.features import build_dataset, feature_columns
-from ml_trading.metrics import information_coefficient
+from ml_trading.metrics import mean_cross_sectional_ic
 from ml_trading.models import feature_importances
 from ml_trading.splits import Fold, walk_forward_folds
 from ml_trading.training import fit_fold_model
@@ -173,7 +173,7 @@ def _run_fold(
         train_rows=len(train),
         test_rows=len(test),
         auc=float(roc_auc_score(truth, score)) if truth.nunique() > 1 else float("nan"),
-        information_coefficient=information_coefficient(frame["score"], frame[target_column]),
+        information_coefficient=mean_cross_sectional_ic(frame, score="score", target=target_column),
     )
     logger.info(
         "%s train=%d test=%d auc=%.4f ic=%.4f",
